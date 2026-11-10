@@ -62,15 +62,19 @@ export async function faqHandler(req) {
     const sku = extractSku(inner);
     if (!sku) return null;
     const items = await fetchFaqs(sku);
-    return items ? renderFaqs(sku, items) : null;
+    return items ? renderFaqs(items) : null;
   }));
 
   // Replace from the end so earlier match indexes stay valid
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (!rendered[i]) continue; // fetch failed: leave original block, client JS can fall back
     const m = blocks[i];
-    html = html.slice(0, m.index) + rendered[i] + html.slice(m.index + m[0].length);
+    html = html.slice(0, m.index) + rendered[i].block + html.slice(m.index + m[0].length);
   }
+
+  // Structured data belongs in <head>, not inside <main> content
+  const ld = rendered.filter(Boolean).map((r) => r.ld).join("\n");
+  if (ld) html = html.replace("</head>", `${ld}\n</head>`);
 
   out.set("x-faq-ssr", rendered.filter(Boolean).length.toString());
   return new Response(html, { status: res.status, headers: out });
@@ -99,15 +103,20 @@ async function fetchFaqs(sku) {
   }
 }
 
-function renderFaqs(sku, items) {
+// Emits the block in standard EDS block-table markup: the same row/cell
+// structure EDS itself serves for an authored block, with the SKU row
+// replaced by one row per FAQ (question cell | answer cell). The block JS
+// decorates it in the browser exactly as it would any other block, so the
+// edge never produces decorated markup and there is one renderer, not two.
+function renderFaqs(items) {
   const rows = items.map((it) => `
-      <div class="faq-list-by-sku">
-        <div>${esc(it.question)}</div>
-        <div>${esc(it.answer?.plaintext)}</div>
-      </div>`).join("");
+          <div>
+            <div>${esc(it.question)}</div>
+            <div><p>${esc(it.answer?.plaintext)}</p></div>
+          </div>`).join("");
 
   // FAQPage structured data so crawlers and LLMs get the Q&A explicitly
-  const ld = {
+  const data = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
     mainEntity: items.map((it) => ({
@@ -117,13 +126,38 @@ function renderFaqs(sku, items) {
     })),
   };
 
-  return `<div class="${BLOCK_NAME}" data-ssr="inlined" data-sku="${esc(sku)}">${rows}
-      <script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>
-    </div>`;
+  return {
+    block: `<div class="${BLOCK_NAME}">${rows}
+        </div>`,
+    ld: `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, "\\u003c")}</script>`,
+  };
 }
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
   ));
+}
+
+// ---- JSON endpoint for client-side rendering ------------------------------
+// Used by the block JS wherever the page didn't come through this function
+// (aem.page preview, da.live preview, local dev). Route: GET /faq-data?sku=XXX
+
+// Origins allowed to call the endpoint from the browser
+const ALLOWED_ORIGIN_RE =
+  /^(https:\/\/([a-z0-9-]+\.)*(aem\.page|aem\.live|da\.live|frescopa\.coffee)|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/;
+
+export async function faqDataHandler(req) {
+  const origin = req.headers.get("origin") || "";
+  const headers = { "content-type": "application/json", vary: "Origin" };
+  if (ALLOWED_ORIGIN_RE.test(origin)) headers["access-control-allow-origin"] = origin;
+
+  const sku = new URL(req.url).searchParams.get("sku") || "";
+  if (!SKU_RE.test(sku)) {
+    return new Response(JSON.stringify({ error: "invalid sku" }), { status: 400, headers });
+  }
+
+  const items = await fetchFaqs(sku);
+  headers["cache-control"] = "public, max-age=300";
+  return new Response(JSON.stringify({ sku, items: items ?? [] }), { status: 200, headers });
 }
