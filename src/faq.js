@@ -5,10 +5,10 @@ import { CacheOverride } from "fastly:cache-override";
 
 // ---- config -------------------------------------------------------------
 // Swap these for ConfigStore reads once it works (see cpilsworth/ssreds src/fastly.ts)
-const EDS_HOST = "main--frescopa26--markszulc.aem.live";        // your EDS origin
+const EDS_HOST = "main--frescopa26--markszulc.aem.live";
 const PUBLISH_HOST = "publish-p137825-e1511252.adobeaemcloud.com";
 const QUERY_PATH = "/graphql/execute.json/frescopa/FAQbySKU";
-const BLOCK_NAME = "faq-list-by-sku";   // <-- set to the actual block class on the page
+const BLOCK_NAME = "faq-list-by-sku";
 const CF_TTL = 300;              // seconds to cache the persisted query at the edge
 
 // Allowlist for SKUs: authors control this value, so validate before it goes in a URL
@@ -29,21 +29,34 @@ export async function faqHandler(req) {
   const url = new URL(req.url);
   const headers = new Headers(req.headers);
   headers.set("host", EDS_HOST);
+  headers.delete("accept-encoding");
 
   const res = await fetch(`https://${EDS_HOST}${url.pathname}${url.search}`, {
     method: req.method,
     headers,
-    backend: "eds_origin",
+    // Ask Fastly to gunzip the origin body for us (removes content-encoding when it does)
+    fastly: { decompressGzip: true },
   });
 
-  console.log("faq: eds", res.status, type, url.pathname);
-  
   const type = res.headers.get("content-type") || "";
   if (req.method !== "GET" || !res.ok || !type.includes("text/html")) return res;
 
-  let html = await res.text();
+  // Belt and braces: if the body is still gzipped, decompress it ourselves.
+  // Anything else compressed (br, zstd) we can't safely rewrite, so pass it through.
+  const enc = (res.headers.get("content-encoding") || "identity").toLowerCase();
+  let body = res.body;
+  if (enc === "gzip") body = body.pipeThrough(new DecompressionStream("gzip"));
+  else if (enc !== "identity") return res;
+
+  let html = await new Response(body).text();
+
+  // Headers for any rewritten response: body is now plain text of a new length
+  const out = new Headers(res.headers);
+  out.delete("content-length");
+  out.delete("content-encoding");
+
   const blocks = [...html.matchAll(BLOCK_RE)];
-  if (!blocks.length) return new Response(html, { status: res.status, headers: res.headers });
+  if (!blocks.length) return new Response(html, { status: res.status, headers: out });
 
   const rendered = await Promise.all(blocks.map(async ([, inner]) => {
     const sku = extractSku(inner);
@@ -59,8 +72,6 @@ export async function faqHandler(req) {
     html = html.slice(0, m.index) + rendered[i] + html.slice(m.index + m[0].length);
   }
 
-  const out = new Headers(res.headers);
-  out.delete("content-length");
   out.set("x-faq-ssr", rendered.filter(Boolean).length.toString());
   return new Response(html, { status: res.status, headers: out });
 }
@@ -76,7 +87,6 @@ async function fetchFaqs(sku) {
     const r = await fetch(
       `https://${PUBLISH_HOST}${QUERY_PATH};sku=${encodeURIComponent(sku)}`,
       {
-        backend: "aem_publish",
         cacheOverride: new CacheOverride("override", { ttl: CF_TTL }),
       },
     );
@@ -91,10 +101,10 @@ async function fetchFaqs(sku) {
 
 function renderFaqs(sku, items) {
   const rows = items.map((it) => `
-      <details class="faq-item" data-category="${esc(it.category)}">
-        <summary>${esc(it.question)}</summary>
-        <p>${esc(it.answer?.plaintext)}</p>
-      </details>`).join("");
+      <div class="faq-list-by-sku">
+        <div>${esc(it.question)}</div>
+        <div>${esc(it.answer?.plaintext)}</div>
+      </div>`).join("");
 
   // FAQPage structured data so crawlers and LLMs get the Q&A explicitly
   const ld = {

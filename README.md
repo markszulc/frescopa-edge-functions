@@ -14,6 +14,13 @@ This boilerplate serves as an example of what is possible to achieve with AEM Ed
 Functions source code can be found under `./src`, tests can be found under `./test` and are executable through `mocha`.
 The service configuration is defined in `config/edgeFunctions.yaml` and CDN routing in `config/cdn.yaml`.
 
+### FAQ rendering
+
+The [FAQ handler](src/faq.js) replaces `faq-list-by-sku` blocks with FAQs from
+the AEM `FAQbySKU` persisted query. Each item is rendered in endpoint order as
+`<div><div>question</div><div>answer.plaintext</div></div>`, with text escaped
+for HTML. The block wrapper, SSR attributes, and FAQPage structured data are retained.
+
 ## Setup
 
 ### Adobe CLI
