@@ -3,10 +3,6 @@ version: '1'
 data:
   requestTransformations:
     rules:
-      # The /weather response depends on the caller's IP-based geolocation, so the same
-      # URL would otherwise return different content per visitor. Fold the client IP into
-      # the cache key (as an `ip` query parameter) so each client gets its own cache entry
-      # instead of opting out of caching. This runs before the CDN cache lookup.
       - name: add-client-ip-to-weather
         when: { reqProperty: path, equals: "/weather" }
         actions:
@@ -22,6 +18,12 @@ data:
           originName: edgefunction-my-edge-function
       - name: route-hello-world-to-edge-function
         when: { reqProperty: path, equals: "/hello-world" }
+        action:
+          type: selectAemOrigin
+          originName: edgefunction-my-edge-function
+      # EDS pages have no file extension; assets, JSON and .plain.html all do.
+      - name: route-html-pages-to-edge-function
+        when: { reqProperty: path, matches: "^/[^.]*$" }
         action:
           type: selectAemOrigin
           originName: edgefunction-my-edge-function

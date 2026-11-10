@@ -15,6 +15,7 @@ governing permissions and limitations under the License.
 import * as response from './lib/response.js';
 import { log } from './lib/log.js';
 import { weatherHandler } from "./weather.js";
+import { faqHandler } from "./faq.js";
 
 addEventListener("fetch", (event) => event.respondWith(handleRequest(event)));
 
@@ -26,14 +27,12 @@ async function handleRequest(event) {
 
   try {
     // Route matching
-    if (url.pathname === "/" && req.method === "GET") {
-      finalResponse = new Response("Hello World from the edge!", { status: 200 });
-    } else if (url.pathname === "/hello-world" && req.method === "GET") {
-      finalResponse = new Response("Hello World from the edge!", { status: 200 });
+    if (url.pathname === "/hello-world" && req.method === "GET") {
+      finalResponse = new Response("Hello World from the VERY edge!", { status: 200 });
     } else if (url.pathname === "/weather" && req.method === "GET") {
       finalResponse = await weatherHandler(req, event.client);
     } else {
-      finalResponse = response.notFound();
+      finalResponse = await faqHandler(req); // proxies EDS, inlines FAQs if the block is present
     }
   } catch (err) {
     console.log(err);
