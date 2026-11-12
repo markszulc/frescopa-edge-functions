@@ -21,6 +21,65 @@ the AEM `FAQbySKU` persisted query. Each item is rendered in endpoint order as
 `<div><div>question</div><div>answer.plaintext</div></div>`, with text escaped
 for HTML. The block wrapper, SSR attributes, and FAQPage structured data are retained.
 
+### FAQ rendering by fragment path
+
+The additional [path FAQ handler](src/faq-by-path.js) leaves the existing SKU
+handler and `/faq-data?sku=…` endpoint unchanged. It scans every HTML page for
+`content-fragment` blocks (authored as **Content Fragment**) after the existing
+handler, using the supplied `getFaqsByPaths` query. There is no page-path
+restriction: each block is queried independently using only its own paths.
+The query accepts `$filter: FaqModelFilter`; the handler supplies an OR filter
+of exact `_path` matches. Results are restricted to the requested paths and
+ordered like the authored list; duplicates are removed and missing fragments
+are omitted.
+
+The handler POSTs typed JSON variables to
+`/content/_cq_graphql/frescopa/endpoint.json` on AEM Publish. Live verification
+showed that `FAQbyPaths;filter=…` treats the object as a string, while a POST to
+the persisted endpoint with `variables` ignores the filter. The direct GraphQL
+endpoint correctly filters exact paths. Its POST requests are not cached by
+the edge fetch cache; the outgoing JSON endpoint and rendered pages use CDN
+caching.
+
+Author one fragment link (with a relative `/content/dam/…` href) or plain path
+per row, without a label/header row:
+
+```html
+<div class="content-fragment">
+  <div><div><p>/content/dam/frescopa/en/faqs/do-i-have-to-buy-frescopa-pods</p></div></div>
+  <div><div><p>/content/dam/frescopa/en/faqs/how-long-until-it-learns-my-taste</p></div></div>
+</div>
+```
+
+The edge emits standard question/answer block rows with escaped plaintext,
+`data-faq-ssr="true"`, and FAQPage JSON-LD in the page head.
+`x-faq-path-ssr` counts successfully rendered path blocks. Invalid paths or
+upstream failures are logged and leave the authored block intact.
+
+For browser hydration/fallback in preview or local development, use
+`GET /faq-data-by-path` with repeated, URL-encoded `path` parameters:
+
+```javascript
+const params = new URLSearchParams();
+paths.forEach((path) => params.append("path", path));
+const response = await fetch(`${edgeOrigin}/faq-data-by-path?${params}`);
+if (!response.ok) throw new Error(`FAQ request failed: ${response.status}`);
+const { items } = await response.json();
+```
+
+The JSON response is `{ paths, items }`, where items include `_path`, `question`,
+`answer.plaintext`, `category`, and `sku` as returned by AEM. Successful data is
+cached for 300 seconds. Invalid input returns 400; upstream/GraphQL failures
+return 502 with `Cache-Control: no-store`. Browser origins follow the same
+allowlist as the SKU endpoint.
+
+The new EDS block's browser decorator must still be implemented in the site
+repository: decorate the SSR rows when `data-faq-ssr="true"`, otherwise extract
+the authored paths and call the JSON endpoint before decorating. The CDN routes
+all extensionless and `.html` page paths through the handler, leaving non-HTML
+assets at origin. Deploy the updated `config/cdn.yaml` through the configuration
+pipeline to enable `.html` routing as well. No separate edge service is required.
+
 ## Setup
 
 ### Adobe CLI

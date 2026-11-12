@@ -21,9 +21,9 @@ data:
         action:
           type: selectAemOrigin
           originName: edgefunction-my-edge-function
-      # EDS pages have no file extension; assets, JSON and .plain.html all do.
+      # Scan all extensionless and .html pages; leave non-HTML assets at origin.
       - name: route-html-pages-to-edge-function
-        when: { reqProperty: path, matches: "^/[^.]*$" }
+        when: { reqProperty: path, matches: '^/(?:[^.]*|.*\.html)$' }
         action:
           type: selectAemOrigin
           originName: edgefunction-my-edge-function
