@@ -16,17 +16,49 @@ The service configuration is defined in `config/edgeFunctions.yaml` and CDN rout
 
 ### FAQ rendering
 
-The [FAQ handler](src/faq.js) replaces `faq-list-by-sku` blocks with FAQs from
-the AEM `FAQbySKU` persisted query. Each item is rendered in endpoint order as
-`<div><div>question</div><div>answer.plaintext</div></div>`, with text escaped
-for HTML. The block wrapper, SSR attributes, and FAQPage structured data are retained.
+The [FAQ handler](src/faq.js) scans every HTML page in a single pass for two
+block types and hydrates each one:
+
+- `faq-list-by-sku` blocks are filled from the AEM `FAQbySKU` persisted query
+  (`x-faq-ssr` counts rendered SKU blocks).
+- `content-fragment` blocks are filled by fragment path (see below;
+  `x-faq-path-ssr` counts rendered path blocks).
+
+Each item is rendered in order as
+`<div><div>question</div><div><p>answer.plaintext</p></div></div>`, with text
+escaped for HTML, and FAQPage structured data is added to the page head.
+
+#### Configuration and reuse
+
+Site-specific settings live in [`src/faq-config.js`](src/faq-config.js): EDS and
+AEM Publish hosts, the SKU persisted query path, the path GraphQL endpoint and
+query, the response list key (`data.<listKey>.items`), block class names, cache
+TTL, SKU/path validation patterns, and allowed CORS origins. `faq.js` contains
+no site-specific values.
+
+The exported `faqHandler`, `faqDataHandler` and `faqByPathDataHandler` use those
+defaults. To serve another site, create handlers with overrides (unspecified
+settings keep their defaults):
+
+```javascript
+import { createFaqHandlers } from "./faq.js";
+
+const site = createFaqHandlers({
+  edsHost: "main--mysite--myorg.aem.live",
+  publishHost: "publish-p123-e456.adobeaemcloud.com",
+  skuQueryPath: "/graphql/execute.json/mysite/FAQbySKU",
+  pathQueryPath: "/content/_cq_graphql/mysite/endpoint.json",
+});
+// site.faqHandler, site.faqDataHandler, site.faqByPathDataHandler
+```
+
+The path query must accept `$filter` on `_path` and return items with `_path`,
+`question` and `answer { plaintext }`.
 
 ### FAQ rendering by fragment path
 
-The additional [path FAQ handler](src/faq-by-path.js) leaves the existing SKU
-handler and `/faq-data?sku=…` endpoint unchanged. It scans every HTML page for
-`content-fragment` blocks (authored as **Content Fragment**) after the existing
-handler, using the supplied `getFaqsByPaths` query. There is no page-path
+`content-fragment` blocks (authored as **Content Fragment**) are hydrated
+using the `getFaqsByPaths` query. There is no page-path
 restriction: each block is queried independently using only its own paths.
 The query accepts `$filter: FaqModelFilter`; the handler supplies an OR filter
 of exact `_path` matches. Results are restricted to the requested paths and

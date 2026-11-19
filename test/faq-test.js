@@ -14,15 +14,16 @@ const hooks = registerHooks({
     },
 });
 let faqHandler;
+let createFaqHandlers;
 try {
-    ({ faqHandler } = await import('../src/faq.js'));
+    ({ faqHandler, createFaqHandlers } = await import('../src/faq.js'));
 } finally {
     hooks.deregister();
 }
 
 describe('FAQ rendering', function () {
     const block = '<div class="faq-list-by-sku"><div><div><p>SKU</p></div><div><p>CSM6001</p></div></div></div>';
-    const page = `<main>${block}<p>After the FAQs</p></main>`;
+    const page = `<head></head><main>${block}<p>After the FAQs</p></main>`;
     let originalFetch;
     let calls;
 
@@ -62,10 +63,10 @@ describe('FAQ rendering', function () {
         const response = await faqHandler(new Request('https://example.com/products'));
         const html = await response.text();
         const rows = items.map((item) =>
-            `<div><div>${item.question.replace(/'/g, '&#39;')}</div><div>${item.answer.plaintext}</div></div>`
+            `<div><div>${item.question.replace(/'/g, '&#39;')}</div><div><p>${item.answer.plaintext}</p></div></div>`
         ).join('');
         const compact = html.replace(/>\s+</g, '><');
-        assert.ok(compact.includes(`data-sku="CSM6001">${rows}<script`));
+        assert.ok(compact.includes(`<main><div class="faq-list-by-sku">${rows}</div><p>After`));
         assert.ok(compact.endsWith('</div><p>After the FAQs</p></main>'));
         assert.doesNotMatch(html, /<details|<summary|data-category/);
         assert.equal(response.headers.get('x-faq-ssr'), '1');
@@ -73,6 +74,38 @@ describe('FAQ rendering', function () {
         const structuredData = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
         assert.equal(structuredData.mainEntity.length, items.length);
         assert.equal(structuredData.mainEntity[0].name, items[0].question);
+    });
+
+    it('uses site configuration for hosts, queries, block names and cache TTL', async function () {
+        const site = createFaqHandlers({
+            edsHost: 'main--other--org.aem.live',
+            publishHost: 'publish-other.adobeaemcloud.com',
+            skuQueryPath: '/graphql/execute.json/other/HelpBySKU',
+            listKey: 'helpList',
+            skuBlock: 'help-by-sku',
+            cacheTtl: 60,
+        });
+        const otherPage = '<head></head><main><div class="help-by-sku"><div><div><p>SKU</p></div><div><p>ABC1</p></div></div></div></main>';
+        globalThis.fetch = async (url) => {
+            calls.push(url);
+            return calls.length === 1
+                ? new Response(otherPage, { headers: { 'content-type': 'text/html' } })
+                : new Response(JSON.stringify({ data: { helpList: { items: [{ question: 'Q?', answer: { plaintext: 'A.' } }] } } }));
+        };
+        const response = await site.faqHandler(new Request('https://example.com/p'));
+        const html = (await response.text()).replace(/>\s+</g, '><');
+        assert.equal(calls[0], 'https://main--other--org.aem.live/p');
+        assert.equal(calls[1], 'https://publish-other.adobeaemcloud.com/graphql/execute.json/other/HelpBySKU;sku=ABC1');
+        assert.ok(html.includes('<div class="help-by-sku"><div><div>Q?</div><div><p>A.</p></div></div></div>'));
+        assert.equal(response.headers.get('x-faq-ssr'), '1');
+
+        calls = [];
+        globalThis.fetch = async (url) => {
+            calls.push(url);
+            return new Response(JSON.stringify({ data: { helpList: { items: [] } } }));
+        };
+        const data = await site.faqDataHandler(new Request('https://example.com/faq-data?sku=ABC1'));
+        assert.equal(data.headers.get('cache-control'), 'public, max-age=60');
     });
 
     it('escapes FAQ text and safely renders a missing plaintext answer', async function () {
@@ -83,8 +116,8 @@ describe('FAQ rendering', function () {
         const response = await faqHandler(new Request('https://example.com/products'));
         const html = (await response.text()).replace(/>\s+</g, '><');
 
-        assert.ok(html.includes('<div><div>&lt;script&gt;&quot;Q&quot; &amp; &#39;A&#39;&lt;/script&gt;</div><div>&lt;b&gt;Answer &amp; more&lt;/b&gt;</div></div>'));
-        assert.ok(html.includes('<div><div>Missing answer</div><div></div></div>'));
+        assert.ok(html.includes('<div><div>&lt;script&gt;&quot;Q&quot; &amp; &#39;A&#39;&lt;/script&gt;</div><div><p>&lt;b&gt;Answer &amp; more&lt;/b&gt;</p></div></div>'));
+        assert.ok(html.includes('<div><div>Missing answer</div><div><p></p></div></div>'));
         assert.ok(html.includes('\\u003cscript>'));
     });
 

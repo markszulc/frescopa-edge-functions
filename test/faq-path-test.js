@@ -12,10 +12,10 @@ const hooks = registerHooks({
         return nextResolve(specifier, context);
     },
 });
-let faqByPathHandler;
+let faqHandler;
 let faqByPathDataHandler;
 try {
-    ({ faqByPathHandler, faqByPathDataHandler } = await import('../src/faq-by-path.js'));
+    ({ faqHandler, faqByPathDataHandler } = await import('../src/faq.js'));
 } finally {
     hooks.deregister();
 }
@@ -66,8 +66,8 @@ describe('FAQ rendering by path', function () {
 
     it('sends an exact OR filter and renders all rows in authored order with safe JSON-LD', async function () {
         mockFetch();
-        const res = await faqByPathHandler(new Request('https://example.com/products'));
-        const html = await res.text();
+        const res = await faqHandler(new Request('https://example.com/products'));
+        const html = (await res.text()).replace(/>\s+</g, '><');
         const { query, variables: { filter } } = JSON.parse(calls[1].options.body);
         assert.deepEqual(filter, {
             _path: {
@@ -91,8 +91,8 @@ describe('FAQ rendering by path', function () {
     it('handles links, deduplicates paths, and replaces multiple blocks without consuming adjacent content', async function () {
         const linked = `<div class="content-fragment"><div><div><a href="${first}">First FAQ</a></div></div><div><div><a href="${first}">Repeated</a></div></div></div>`;
         mockFetch(`<head></head><main>${linked}<p>Between</p>${block}<p>After</p></main>`);
-        const res = await faqByPathHandler(new Request('https://example.com/page'));
-        const html = await res.text();
+        const res = await faqHandler(new Request('https://example.com/page'));
+        const html = (await res.text()).replace(/>\s+</g, '><');
         assert.equal(res.headers.get('x-faq-path-ssr'), '2');
         assert.ok(html.includes('</div><p>Between</p><div class="content-fragment"'));
         assert.ok(html.endsWith('</div><p>After</p></main>'));
@@ -103,7 +103,7 @@ describe('FAQ rendering by path', function () {
         for (const path of ['/', '/products/coffee', '/support/faqs.html?lang=en']) {
             calls = [];
             mockFetch();
-            const res = await faqByPathHandler(new Request(`https://example.com${path}`));
+            const res = await faqHandler(new Request(`https://example.com${path}`));
             assert.equal(res.headers.get('x-faq-path-ssr'), '1');
             assert.equal(calls[0].url, `https://main--frescopa26--markszulc.aem.live${path}`);
         }
@@ -113,7 +113,7 @@ describe('FAQ rendering by path', function () {
         const firstBlock = `<div id="first" class="content-fragment featured"><div><div><p>${first}</p></div></div></div>`;
         const secondBlock = `<div class='content-fragment'><div><div><p>${second}</p></div></div></div>`;
         mockFetch(`<head></head><main>${firstBlock}<p>Between</p>${secondBlock}</main>`);
-        const res = await faqByPathHandler(new Request('https://example.com/any/page'));
+        const res = await faqHandler(new Request('https://example.com/any/page'));
         const html = await res.text();
         const [firstResult, secondResult] = html.split('<main>')[1].split('<p>Between</p>');
         assert.ok(firstResult.startsWith('<div id="first" class="content-fragment featured" data-faq-ssr="true">'));
@@ -130,7 +130,7 @@ describe('FAQ rendering by path', function () {
     it('leaves pages without content-fragment blocks unchanged without path queries', async function () {
         const content = '<head></head><main><div class="other-content-fragment"><div>Leave alone</div></div></main>';
         mockFetch(content);
-        const res = await faqByPathHandler(new Request('https://example.com/anywhere'));
+        const res = await faqHandler(new Request('https://example.com/anywhere'));
         assert.equal(await res.text(), content);
         assert.equal(calls.length, 1);
     });
@@ -138,7 +138,7 @@ describe('FAQ rendering by path', function () {
     it('preserves SKU-only pages and continues to use the original query', async function () {
         const skuBlock = '<div class="faq-list-by-sku"><div><div><p>SKU</p></div><div><p>CSM6001</p></div></div></div>';
         mockFetch(`<head></head><main>${skuBlock}</main>`);
-        const res = await faqByPathHandler(new Request('https://example.com/page'));
+        const res = await faqHandler(new Request('https://example.com/page'));
         assert.ok((await res.text()).includes('class="faq-list-by-sku"'));
         assert.ok(calls[1].url.endsWith('/FAQbySKU;sku=CSM6001'));
         assert.equal(calls.length, 2);
@@ -146,13 +146,34 @@ describe('FAQ rendering by path', function () {
         assert.equal(res.headers.get('x-faq-path-ssr'), null);
     });
 
+    it('renders SKU and content-fragment blocks on the same page in one pass', async function () {
+        const skuBlock = '<div class="faq-list-by-sku"><div><div><p>SKU</p></div><div><p>CSM6001</p></div></div></div>';
+        globalThis.fetch = async (url, options) => {
+            calls.push({ url, options });
+            if (url.includes('.aem.live')) {
+                return new Response(`<head></head><main>${skuBlock}<p>Between</p>${block}</main>`, {
+                    headers: { 'content-type': 'text/html' },
+                });
+            }
+            const skuItems = [{ question: 'SKU question', answer: { plaintext: 'SKU answer' } }];
+            return new Response(JSON.stringify({ data: { faqList: { items: url.includes('FAQbySKU') ? skuItems : items } } }));
+        };
+        const res = await faqHandler(new Request('https://example.com/page'));
+        const html = (await res.text()).replace(/>\s+</g, '><');
+        assert.equal(calls.length, 3);
+        assert.equal(res.headers.get('x-faq-ssr'), '1');
+        assert.equal(res.headers.get('x-faq-path-ssr'), '1');
+        assert.ok(html.includes('<div class="faq-list-by-sku"><div><div>SKU question</div><div><p>SKU answer</p></div></div></div><p>Between</p><div class="content-fragment" data-faq-ssr="true"><div><div>&lt;script&gt;'));
+        assert.equal(html.match(/application\/ld\+json/g).length, 2);
+    });
+
     it('logs upstream and invalid-block failures and preserves authored content', async function () {
         mockFetch(page, {}, 503);
-        const res = await faqByPathHandler(new Request('https://example.com/page'));
+        const res = await faqHandler(new Request('https://example.com/page'));
         assert.equal(await res.text(), page);
         assert.equal(res.headers.get('x-faq-path-ssr'), '0');
         mockFetch(page.replace(first, '/content/dam/../private'));
-        assert.equal(await (await faqByPathHandler(new Request('https://example.com/page'))).text(), page.replace(first, '/content/dam/../private'));
+        assert.equal(await (await faqHandler(new Request('https://example.com/page'))).text(), page.replace(first, '/content/dam/../private'));
         assert.equal(calls.length, 3);
         assert.equal(errors.length, 2);
     });

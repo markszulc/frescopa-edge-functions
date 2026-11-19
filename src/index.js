@@ -15,8 +15,7 @@ governing permissions and limitations under the License.
 import * as response from './lib/response.js';
 import { log } from './lib/log.js';
 import { weatherHandler } from "./weather.js";
-import { faqDataHandler } from "./faq.js";
-import { faqByPathHandler, faqByPathDataHandler } from "./faq-by-path.js";
+import { faqHandler, faqDataHandler, faqByPathDataHandler } from "./faq.js";
 
 addEventListener("fetch", (event) => event.respondWith(handleRequest(event)));
 
@@ -37,7 +36,7 @@ async function handleRequest(event) {
     } else if (url.pathname === "/faq-data-by-path" && req.method === "GET") {
       finalResponse = await faqByPathDataHandler(req);
     } else {
-      finalResponse = await faqByPathHandler(req); // scans every page for SKU FAQ and content-fragment blocks
+      finalResponse = await faqHandler(req); // scans every page for SKU FAQ and content-fragment blocks
     }
   } catch (err) {
     console.log(err);
