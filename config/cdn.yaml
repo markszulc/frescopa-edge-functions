@@ -9,18 +9,6 @@ data:
           - type: set
             queryParam: ip
             value: { reqProperty: clientIp }
-  redirects:
-    rules:
-      - name: apex-to-www
-        when: { reqProperty: domain, equals: "frescopacoffee.com" }
-        action:
-          type: redirect
-          status: 301
-          location:
-            join:
-              format: 'https://www.%s'
-              args:
-                - reqProperty: url
   originSelectors:
     rules:
       - name: route-weather-to-edge-function
