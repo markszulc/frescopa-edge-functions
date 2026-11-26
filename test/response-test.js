@@ -14,16 +14,16 @@ import assert from 'assert';
 import * as response from '../src/lib/response.js';
 
 describe('Test response functions', function () {
-    describe('response.notFound', function () {
-        it('should return 404', function () {
-            const resp = response.notFound();
-            assert.equal(resp.status, 404);
-        });
+  describe('response.notFound', function () {
+    it('should return 404', function () {
+      const resp = response.notFound();
+      assert.equal(resp.status, 404);
     });
-    describe('response.error', function () {
-        it('should return 503', function () {
-            const resp = response.error();
-            assert.equal(resp.status, 500);
-        });
+  });
+  describe('response.error', function () {
+    it('should return 500', function () {
+      const resp = response.error();
+      assert.equal(resp.status, 500);
     });
+  });
 });

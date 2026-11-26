@@ -12,7 +12,7 @@ governing permissions and limitations under the License.
 
 /// <reference types="@fastly/js-compute" />
 
-const notFound = () => new Response("Not Found!", { status: 404 });
-const error = () => new Response("Internal Server Error", { status: 500 });
+const notFound = () => new Response('Not Found!', { status: 404 });
+const error = () => new Response('Internal Server Error', { status: 500 });
 
 export { notFound, error };

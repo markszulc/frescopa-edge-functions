@@ -2,6 +2,20 @@
 
 Thanks for choosing to contribute!
 
+This is a copyable reference project, not a production framework. Prefer small,
+readable examples and keep block-specific behaviour inside its matching module.
+Start with the [README](../README.md), and validate changes with:
+
+```sh
+npm ci
+npm test
+npm run lint
+npm run build
+```
+
+The build requires the Adobe CLI. In a pull request, report which checks passed
+and which were not run. Do not deploy reference changes without confirmation.
+
 The following are a set of guidelines to follow when contributing to this project.
 
 ## Code Of Conduct
@@ -30,8 +44,8 @@ All submissions should come in the form of pull requests and need to be reviewed
 by project committers. Read [GitHub's pull request documentation](https://help.github.com/articles/about-pull-requests/)
 for more information on sending pull requests.
 
-Lastly, please follow the [pull request template](PULL_REQUEST_TEMPLATE.md) when
-submitting a pull request!
+Include the example affected, the intended behaviour and validation results in
+your pull request description.
 
 ## From Contributor To Committer
 

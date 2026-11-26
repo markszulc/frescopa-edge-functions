@@ -43,7 +43,8 @@ export class SecretStoreManager {
         if (secretsEntry) {
           this.secretsMap = JSON.parse(secretsEntry.plaintext());
         }
-      } catch (e) {
+      } catch {
+        console.warn('Bundled secrets unavailable; trying individual secret lookup');
         // Not available or not valid JSON — fall through to individual lookup
         this.secretsMap = null;
       }

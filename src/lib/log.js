@@ -12,33 +12,14 @@ governing permissions and limitations under the License.
 
 /// <reference types="@fastly/js-compute" />
 
-import { ConfigStore } from "fastly:config-store";
-
-const logger = new Logger("customerHttps");
-
 const log = (req, resp) => {
-  let logLevel = 'info';
-  try {
-    // Serve as an example of how to use the config store
-    const config = new ConfigStore('config_default');
-    logLevel = config.get('LOG_LEVEL') || 'info';
-  } catch (e) {
-    console.warn('No config store found, using default log level');
-  }
-
   const record = {
     method: req.method,
-    url: req.url,
-    status: resp.status
+    path: new URL(req.url).pathname,
+    status: resp.status,
   };
 
-  if (logLevel === 'debug') {
-    record.requestHeaders = req.headers;
-    record.responseHeaders = resp.headers;
-  }
-
-  logger.log(JSON.stringify(record));
   console.log(JSON.stringify(record));
-}
+};
 
 export { log };

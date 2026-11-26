@@ -1,5 +1,5 @@
-kind: "EdgeFunctions"
-version: "1"
+kind: 'EdgeFunctions'
+version: '1'
 data:
   functions:
     - name: my-edge-function

@@ -1,539 +1,276 @@
-# aem-edge-functions-boilerplate
+# Frescopa Edge Functions reference
 
-## Introduction
+A small, copyable reference project for AEM Edge Functions. It demonstrates
+server-side rendering of EDS blocks and a standalone weather service, using
+Frescopa content as the example.
 
-This boilerplate serves as an example of what is possible to achieve with AEM Edge Functions. The repository contains a simple server that exposes multiple endpoints and makes usage of:
+The goal is realistic behaviour with understandable code, not a complete
+production framework. All modules run inside **one deployed edge function**.
+Each block owns its content-specific configuration, fetching, validation,
+HTML and structured data so it can be copied and adapted independently.
 
-- Edge Functions service provisioning
-- Configurations usage (ConfigStore)
-- Secrets usage (SecretStore)
-- KV store usage (KVStore)
-- Logging
-- Log Tailing
+## Quick start
 
-Functions source code can be found under `./src`, tests can be found under `./test` and are executable through `mocha`.
-The service configuration is defined in `config/edgeFunctions.yaml` and CDN routing in `config/cdn.yaml`.
+AI coding assistants should also read [AGENTS.md](AGENTS.md).
+Claude Code loads that guidance through [CLAUDE.md](CLAUDE.md).
 
-### FAQ rendering
+Use **Node.js 22.15 or newer**, npm, and the Adobe CLI with the Edge Functions plugin:
 
-The [FAQ handler](src/faq.js) scans every HTML page in a single pass for two
-block types and hydrates each one:
-
-- `faq-list-by-sku` blocks are filled from the AEM `FAQbySKU` persisted query
-  (`x-faq-ssr` counts rendered SKU blocks).
-- `content-fragment` blocks are filled by fragment path (see below;
-  `x-faq-path-ssr` counts rendered path blocks).
-
-Each item is rendered in order as
-`<div><div>question</div><div><p>answer.plaintext</p></div></div>`, with text
-escaped for HTML, and FAQPage structured data is added to the page head.
-
-#### Configuration and reuse
-
-Site-specific settings live in [`src/faq-config.js`](src/faq-config.js): EDS and
-AEM Publish hosts, the SKU persisted query path, the path GraphQL endpoint and
-query, the response list key (`data.<listKey>.items`), block class names, cache
-TTL, SKU/path validation patterns, and allowed CORS origins. `faq.js` contains
-no site-specific values.
-
-The exported `faqHandler`, `faqDataHandler` and `faqByPathDataHandler` use those
-defaults. To serve another site, create handlers with overrides (unspecified
-settings keep their defaults):
-
-```javascript
-import { createFaqHandlers } from "./faq.js";
-
-const site = createFaqHandlers({
-  edsHost: "main--mysite--myorg.aem.live",
-  publishHost: "publish-p123-e456.adobeaemcloud.com",
-  skuQueryPath: "/graphql/execute.json/mysite/FAQbySKU",
-  pathQueryPath: "/content/_cq_graphql/mysite/endpoint.json",
-});
-// site.faqHandler, site.faqDataHandler, site.faqByPathDataHandler
+```sh
+npm install -g @adobe/aio-cli
+aio plugins:install @adobe/aio-cli-plugin-aem-edge-functions
+npm ci
+aio login
+aio aem edge-functions setup
+aio aem edge-functions info --debug
+npm test
+npm run lint
+npm run build
+npm run serve
 ```
 
-The path query must accept `$filter` on `_path` and return items with `_path`,
-`question` and `answer { plaintext }`.
+During setup, save locally, select the correct Adobe organization and program,
+then select the EDS site. The site domain must be a registered hostname with
+valid TLS and the provisioned Edge Functions API. Your deploy identity needs the
+required AEM Administrator product profile in that organization.
 
-### FAQ rendering by fragment path
+The local edge server runs at `http://127.0.0.1:7676`:
 
-`content-fragment` blocks (authored as **Content Fragment**) are hydrated
-using the `getFaqsByPaths` query. There is no page-path
-restriction: each block is queried independently using only its own paths.
-The query accepts `$filter: FaqModelFilter`; the handler supplies an OR filter
-of exact `_path` matches. Results are restricted to the requested paths and
-ordered like the authored list; duplicates are removed and missing fragments
-are omitted.
+```sh
+curl http://127.0.0.1:7676/hello-world
+curl 'http://127.0.0.1:7676/weather?ip=127.0.0.1'
+curl 'http://127.0.0.1:7676/faq-data?sku=CSM6001'
+curl 'http://127.0.0.1:7676/faq-data-by-path?path=/content/dam/frescopa/en/faqs/do-i-have-to-buy-frescopa-pods'
+```
 
-The handler POSTs typed JSON variables to
-`/content/_cq_graphql/frescopa/endpoint.json` on AEM Publish. Live verification
-showed that `FAQbyPaths;filter=…` treats the object as a string, while a POST to
-the persisted endpoint with `variables` ignores the filter. The direct GraphQL
-endpoint correctly filters exact paths. Its POST requests are not cached by
-the edge fetch cache; the outgoing JSON endpoint and rendered pages use CDN
-caching.
+FAQ examples call the configured AEM Publish host and require published content.
+Local IP geolocation is limited to Fastly's local fixtures; arbitrary public IPs
+may return the friendly "Could not determine your location" response. Deployed
+weather requests use Fastly geolocation and the caller IP supplied by the CDN.
 
-Author one fragment link (with a relative `/content/dam/…` href) or plain path
-per row, without a label/header row:
+After provisioning and routing are configured:
+
+```sh
+npm run deploy
+aio aem edge-functions tail-logs my-edge-function
+```
+
+`npm run deploy` targets the existing `my-edge-function` service. The package name
+in `fastly.toml` is build metadata, not the deployed service name.
+
+## Source structure
+
+```text
+src/
+  index.js                    Entry point: example/service routes and error handling
+  block-handlers.js           Registers blocks and routes their JSON endpoints
+  site-config.js              Shared EDS/Publish hosts and browser origin allowlist
+  blocks/
+    faq-list-by-sku.js         Complete SKU FAQ block implementation
+    content-fragment.js        Complete FAQ fragment block implementation
+  services/
+    weather.js                 Standalone weather endpoint
+  lib/
+    page-handler.js            EDS proxy, block matching and HTML replacement
+    json-cors.js               Generic JSON/CORS headers
+    log.js                     Console request metadata logging
+    response.js                Common HTTP error responses
+    secret-store.js            Optional Fastly secret-store example
+test/
+  faq-list-by-sku-test.js      SKU block behaviour
+  content-fragment-test.js     Fragment block behaviour
+  block-handlers-test.js       Routing, configuration isolation and mixed-block integration
+  page-handler-test.js         Generic page proxy behaviour
+  weather-test.js              Weather service behaviour
+  log-test.js                  Logging behaviour
+  response-test.js             Shared HTTP response helpers
+  index-test.js                Entry-point routing and error handling
+  helpers/                    Node-only Fastly runtime test doubles
+config/
+  edgeFunctions.yaml           Service provisioning
+  cdn.yaml                     CDN transformations and origin routing
+docs/
+  edge-functions-reference.md  Optional stores, logging and caching reference
+```
+
+- **[Blocks](src/blocks/)** have a 1:1 relationship with supported EDS blocks.
+- **[Services](src/services/)** are standalone endpoints, not HTML block renderers.
+- **[Utilities](src/lib/)** provide generic infrastructure. No shared content renderer.
+- **[Tests](test/)** mirror the owning module's name. Integration tests are separate.
+- `data/` is unnecessary unless static datasets are introduced.
+
+## Routes and request flow
+
+All listed endpoints use GET. Browser JSON endpoint paths are declared inside
+their block modules; standalone routes are declared in [index.js](src/index.js).
+
+| Route                        | Owner                     | Response                                                                        | Caching                                  |
+| ---------------------------- | ------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------- |
+| `/hello-world`               | Entry-point demonstration | Plain text                                                                      | No explicit TTL in this example          |
+| `/weather`                   | Weather service           | Plain text                                                                      | 300 seconds, CDN key varies by client IP |
+| `/faq-data?sku=...`          | `faq-list-by-sku`         | `{ sku, items }` JSON                                                           | 300 seconds                              |
+| `/faq-data-by-path?path=...` | `content-fragment`        | `{ paths, items }` JSON                                                         | 300 seconds                              |
+| Remaining paths              | Page handler              | EDS origin response, with matching blocks rendered on successful GET HTML pages | Origin response cache headers            |
+
+```text
+Request -> index.js
+  -> hello-world / weather
+  -> block-handlers.js
+       -> matching block JSON endpoint
+       -> page-handler.js fetches EDS HTML once
+            -> matching block modules fetch and render content
+            -> replacements and structured data are inserted
+```
+
+The page proxy passes through non-GET, non-HTML and unsuccessful origin responses.
+It handles gzip, but leaves unsupported encodings unchanged. Supported blocks
+are opaque subtrees: nested supported blocks are not rendered independently.
+This is a lightweight EDS markup matcher, not a general-purpose HTML parser.
+
+Both FAQ JSON endpoints return **400/no-store** for invalid input and
+**502/no-store** for upstream or malformed-data failures. A valid query with no
+matching content returns **200** with `items: []`. This intentionally replaces
+the old SKU endpoint's cached empty success response on upstream failure.
+Page rendering failures are logged and preserve authored content for browser fallback;
+one block's failure does not stop other blocks from rendering.
+
+Weather returns **502/no-store** on API failures or invalid data, and
+**400/no-store** without a client IP. Unavailable geolocation remains a friendly
+cacheable **200** response. Zero degrees is a valid temperature.
+The public Open-Meteo example needs no secret or Authorization header.
+
+## Where configuration lives
+
+| File                                            | Responsibility                                                   | Deployment                           |
+| ----------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------ |
+| Local `.aio` (ignored by Git)                   | CLI organization, program and EDS domain/authentication settings | Local CLI only                       |
+| [site-config.js](src/site-config.js)            | Shared EDS origin, Publish host and allowed browser origins      | Build and deploy code                |
+| Each block module's `defaultConfig`             | Block class, JSON route, GraphQL query, validation and cache TTL | Build and deploy code                |
+| [edgeFunctions.yaml](config/edgeFunctions.yaml) | Service name and optional origins/stores                         | Cloud Manager configuration pipeline |
+| [cdn.yaml](config/cdn.yaml)                     | Which requests reach the function; weather IP cache key          | Cloud Manager configuration pipeline |
+| [fastly.toml](fastly.toml)                      | Package metadata and optional local runtime fixtures             | Local build/serve                    |
+
+The CDN routes all extensionless and `.html` paths through this function, leaving
+other assets at their origin. See the actual configuration rather than copying
+an incomplete route example. Changing code and changing CDN configuration are
+separate deployment steps.
+
+Build outputs in `bin/` and `pkg/`, installed dependencies and local credentials
+are ignored. Never commit `.aio`, access tokens or real secrets.
+
+## Copying or extending a block
+
+1. Copy `src/blocks/<eds-block-name>.js`.
+2. Update its factory name and `defaultConfig`: class, route, query, list key and validation.
+3. Adapt the HTML renderer and structured-data schema for the new content type.
+4. Register the factory in `createBlockHandlers`, with its own overrides.
+5. Copy the corresponding test suite and update its authored markup and expected output.
+
+HTML escaping and structured-data rendering are intentionally duplicated inside
+each block. Changing one block's output cannot change another's. Block modules
+only share site settings and generic JSON/CORS utilities; the SKU module also
+uses Fastly's fetch-cache API.
+
+The renderer contract is `{ className, ssrHeader, render }`. `render(block)`
+receives `opening`, `inner`, `index` and `end`, and returns `{ block, ld }`
+(replacement HTML and optional structured data), or `null` to preserve the original.
+A browser JSON endpoint also supplies `dataPath` and `dataHandler`.
+Handle and log content-fetching failures inside the module.
+
+Factories work independently with their defaults. To override site and block
+settings together:
+
+```js
+import { createBlockHandlers } from './src/block-handlers.js';
+
+const handlers = createBlockHandlers({
+  site: {
+    edsHost: 'main--mysite--myorg.aem.live',
+    publishHost: 'publish-p123-e456.adobeaemcloud.com',
+  },
+  faqListBySku: {
+    queryPath: '/graphql/execute.json/mysite/FAQbySKU',
+    cacheTtl: 60,
+  },
+  contentFragment: {
+    queryPath: '/content/_cq_graphql/mysite/endpoint.json',
+  },
+});
+// handlers.handleRequest(req): JSON endpoint or EDS page proxy
+```
+
+New standalone services belong in `src/services/` and need a route in `src/index.js`.
+Adding modules does not require a new deployed service.
+
+## Authored block contracts
+
+**FAQ List by SKU** uses a key/value row:
 
 ```html
-<div class="content-fragment">
-  <div><div><p>/content/dam/frescopa/en/faqs/do-i-have-to-buy-frescopa-pods</p></div></div>
-  <div><div><p>/content/dam/frescopa/en/faqs/how-long-until-it-learns-my-taste</p></div></div>
+<div class="faq-list-by-sku">
+  <div>
+    <div><p>SKU</p></div>
+    <div><p>CSM6001</p></div>
+  </div>
 </div>
 ```
 
-The edge emits standard question/answer block rows with escaped plaintext,
-`data-faq-ssr="true"`, and FAQPage JSON-LD in the page head.
-`x-faq-path-ssr` counts successfully rendered path blocks. Invalid paths or
-upstream failures are logged and leave the authored block intact. Empty results
-also log a warning and preserve the paths for browser fallback. Paths must match
-the published fragment paths exactly; `/faqs/` and `/fa-qs/` are different folders.
+**Content Fragment** currently supports **FAQ fragments only**, not arbitrary models.
+Author one relative fragment link or plain `/content/dam/...` path per row,
+without a label/header row:
 
-For browser hydration/fallback in preview or local development, use
-`GET /faq-data-by-path` with repeated, URL-encoded `path` parameters:
-
-```javascript
-const params = new URLSearchParams();
-paths.forEach((path) => params.append("path", path));
-const response = await fetch(`${edgeOrigin}/faq-data-by-path?${params}`);
-if (!response.ok) throw new Error(`FAQ request failed: ${response.status}`);
-const { items } = await response.json();
+```html
+<div class="content-fragment">
+  <div>
+    <div><p>/content/dam/frescopa/en/faqs/do-i-have-to-buy-frescopa-pods</p></div>
+  </div>
+</div>
 ```
 
-The JSON response is `{ paths, items }`, where items include `_path`, `question`,
-`answer.plaintext`, `category`, and `sku` as returned by AEM. Successful data is
-cached for 300 seconds. Invalid input returns 400; upstream/GraphQL failures
-return 502 with `Cache-Control: no-store`. Browser origins follow the same
-allowlist as the SKU endpoint.
+The fragment query POSTs typed `$filter` variables to the direct GraphQL endpoint.
+Persisted-query endpoints were not applying this object filter correctly in the
+example environment. Results are deduplicated and ordered by authored paths;
+only requested fragments are returned. Paths must match published content exactly.
+Changing models means updating the query, `listKey`, validation and renderer together.
 
-The new EDS block's browser decorator must still be implemented in the site
-repository: decorate the SSR rows when `data-faq-ssr="true"`, otherwise extract
-the authored paths and call the JSON endpoint before decorating. The CDN routes
-all extensionless and `.html` page paths through the handler, leaving non-HTML
-assets at origin. Deploy the updated `config/cdn.yaml` through the configuration
-pipeline to enable `.html` routing as well. No separate edge service is required.
+Both blocks emit standard EDS question/answer rows and FAQPage JSON-LD in `<head>`.
+`x-faq-ssr` and `x-faq-path-ssr` count successfully rendered blocks; fragment wrappers
+also receive `data-faq-ssr="true"`.
+The companion EDS browser decorator must understand these rows and hydrate
+authored inputs from the JSON endpoints when SSR has not run, such as in preview.
 
-## Setup
+## Tests, formatting and validation
 
-### Adobe CLI
-
-First install Adobe CLI (aio) with the following command
-
-```
-npm install -g @adobe/aio-cli
-```
-
-Next install the aio-cli AEM Edge Functions plugin
-
-```
-aio plugins:install @adobe/aio-cli-plugin-aem-edge-functions
+```sh
+npm test
+npm test -- test/faq-list-by-sku-test.js test/content-fragment-test.js
+npm run lint
+npm run lint:fix
+npm run build
 ```
 
-Finally run the following commands to finish setting up the aio AEM Edge Functions plugin.
-
-```
-aio login
-aio aem edge-functions setup
-```
-
-This command will ask you to login and then to select your environment on which you want to use AEM Edge Functions.
-
-Note: You will need to have the **AEM Administrator Product Profile** in order to be able to deploy code to your edge functions
-
-### Boilerplate
-
-Run the following command from the boilerplate project to setup your machine
-
-```
-npm install
-```
-
-## Create your edge functions
-
-The first step to create your edge functions is to ensure that you have setup a configuration pipeline for your environment in Cloud Manager. If it is not the case, please follow this [documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/config-pipeline) to create your configuration pipeline.
-
-In case you are using a RDE, you can deploy your configuration using the command `aio aem:rde:install -t env-config ./config`.
-
-Edge Functions creation is done via configuration file, you will need to create a YAML file (eg. edgeFunctions.yaml) with the following configuration:
-
-```
-kind: "EdgeFunctions"
-version: "1"
-data:
-  functions:
-    - name: my-edge-function
-  # Uncomment to enable secrets
-  # secrets:
-  #   - key: API_TOKEN
-  #     value: ${{ API_TOKEN_SECRET }}
-  # Uncomment to enable a KV store
-  # kvs: true
-```
-
-The configuration is composed of:
-
-- **functions**: contains a list of edge functions, where a function is composed of a **name** and a set of **origins**. The function name must be at most **30 characters** long, start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits, and hyphens. The default limit is 1 function for AEM as a Cloud Service environments and 3 for Edge Delivery Services sites.
-- **configs**: contains a key/value configs arrays that will be exposed to all your edge functions
-- **secrets**: contains a key/value secrets arrays that will be exposed to all your edge functions
-- **kvs**: when set to `true`, provisions an empty KV store named `kv_default` that all your edge functions can read from and write to at runtime
-
-Additionally, you will need to define routing rules in your CDN configuration file (eg. cdn.yaml) using CDN origin selectors rules:
-
-```
-kind: 'CDN'
-version: '1'
-data:
-  requestTransformations:
-    rules:
-      # The /weather response depends on the caller's IP-based geolocation. Fold the
-      # client IP into the cache key (as an `ip` query parameter) so the response can be
-      # cached per client instead of opting out of caching with skipCache.
-      - name: add-client-ip-to-weather
-        when: { reqProperty: path, equals: "/weather" }
-        actions:
-          - type: set
-            queryParam: ip
-            value: { reqProperty: clientIp }
-  originSelectors:
-    rules:
-      - name: route-weather-to-edge-function
-        when: { reqProperty: path, equals: "/weather" }
-        action:
-          type: selectAemOrigin
-          originName: edgefunction-my-edge-function
-      - name: route-hello-world-to-edge-function
-        when: { reqProperty: path, equals: "/hello-world" }
-        action:
-          type: selectAemOrigin
-          originName: edgefunction-my-edge-function
-```
-
-> **Caching:** These routes intentionally do **not** set `skipCache: true`. `skipCache` forces every request through uncached traversal, so for cases like these it is usually better to keep caching enabled and vary the cache key when a response depends on the request. `/hello-world` is static and cached directly; `/weather` is made cacheable by keying the CDN cache on the client IP (the request transformation above) so each client is served a cached response for the duration of its `Cache-Control: max-age`. See [Caching](#caching).
-
-**Note**: If you already have a CDN configuration file, just add the origin selectors rules to your existing configuration
-
-The origin selector rule enables you to route your traffic to your edge functions under your own conditions (such as routing a specific domain or only under a certain path). See [official documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-configuring-traffic#origin-selectors) to learn more about Origin Selector.
-
-Once you have created your configuration, you will need to commit your changes to your Git Repository and trigger the configuration pipeline. Once the configuration pipeline succeeds, you should be able to access your edge function endpoints:
-
-- *publish-pXXXXX-eYYYYY.adobeaemcloud.com/weather* or *example.com/weather*
-- *publish-pXXXXX-eYYYYY.adobeaemcloud.com/hello-world* or *example.com/hello-world*
-
-where **pXXXXX-eYYYYY** is your environment coordinates.
-
-## Build
-
-The following command will package your edge function code for deployment to your edge function service.
-
-```
-aio aem edge-functions build
-```
-
-## Deploy
-
-The following command will deploy your package to your edge function. You will have to set the argument function-name to the name you gave your function in the edge function configuration file.
-
-```
-aio aem edge-functions deploy <function-name>
-```
-
-## Local run
-
-The following command will run your edge function code locally and exposed a server at `http://127.0.0.1:7676`
-
-```
-aio aem edge-functions serve
-```
-
-You can learn more about what is supported by Local runtime on [Fastly documentation](https://www.fastly.com/documentation/reference/cli/compute/serve/).
-
-## Test
-
-The following command will execute tests using `mocha`.
-
-```
-npm run test
-```
-
-## Remote debugging
-
-Adobe Managed CDN only offers remote logging as a way to debug your program. The following command will tail your edge function standard output. You will be able to get runtime console.log from your edge function  directly in your terminal. You will have to set the argument function-name to the name you gave your function in the edge function configuration file.
-
-```
-aio aem edge-functions tail-logs <function-name>
-```
-
-## List Edge Functions
-
-To list all Edge Functions configured for your environment:
-
-```
-aio aem edge-functions list
-```
-
-This displays a table with the name, active package ID, and timestamps of all available Edge Functions.
-
-## Configuration
-
-### Origins
-
-Adobe Managed CDN allows edge function to access any origins by default. In case you want to restrict access to only defined origins (see [Fastly Documentation](https://js-compute-reference-docs.edgecompute.app/docs/fastly:backend/enforceExplicitBackends)), you will need to define your origins in your edge functions definition (in the edge function configuration file) as an array of origins similar to the [CDN Origin Selectors feature](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-configuring-traffic#origin-selectors).
-
-Given the following configuration
-
-```
-origins:
-  - name: my-origin-name
-    domain: example.com
-```
-
-you will be able to select the origin to use for your request as follow
-
-```
-const request = new Request("https://example.com/test");
-const response = await fetch(request, { backend: "my-origin-name" });
-```
-
-> **Note:** Service stores (`configs`, `secrets`, and `kvs`) are not available in [sandbox programs](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/using-cloud-manager/programs/introduction-sandbox-programs). Edge function services themselves run normally on sandbox environments — only the stores are not provisioned.
-
-### Edge Function Environment Configuration
-
-Adobe Managed CDN allows you to use environment variable in your code through config store. Those environment variables can be defined in the edge functions configuration file under configs as an array of objects containing a key and a value fields.
-
-Given the following configuration
-
-```
-configs:
-  - key: LOG_LEVEL
-    value: DEBUG
-```
-
-you will be able to get your environment variable as follow
-
-```
-import { ConfigStore } from "fastly:config-store";
-...
-const config = new ConfigStore('config_default');
-const logLevel = config.get('LOG_LEVEL') || 'info';
-```
-
-**Notes:**
-- The config store will always be named config_default
-- key name are case-sensitive
-- The config store is shared between all your edge functions
-
-### Edge Function Secrets
-
-Adobe Managed CDN allows you to use secrets in your code through secret store. Those secrets can be defined in the edge functions configuration file under secrets as an array of objects containing a key and a value fields. Note that the value field **does not** contain the secret, but a reference to the secret (${{SECRET_REFERENCE}}). The secret needs to be defined in Cloud Manager as described in this [documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/config-pipeline#secret-env-vars).
-
-Given the following configuration
-
-```
-secrets:
-  - key: API_TOKEN
-    value: ${{ API_TOKEN_SECRET }}
-```
-
-you will be able to get your secret using the secret manager class available in the boilerplate. Secrets get be retrieved as follow
-
-```
-import { SecretStoreManager } from "./lib/config";
-...
-const apiToken = await SecretStoreManager.getSecret('API_TOKEN');
-```
-
-**Notes:**
-- The secret store will always be named secret_default
-- key name are case-sensitive
-- **Secrets are immutable**
-- The secret store is shared between all your edge functions
-
-### Edge Function KV Store
-
-Adobe Managed CDN allows you to read and write arbitrary key-value data at runtime through a KV store. To enable it, set `kvs: true` in the edge functions configuration file:
-
-```
-kvs: true
-```
-
-This provisions an empty KV store named `kv_default`. You can interact with the store from your edge function code using the [Fastly KV Store API](https://js-compute-reference-docs.edgecompute.app/docs/fastly:kv-store/KVStore):
-
-```
-import { KVStore } from "fastly:kv-store";
-...
-const kv = new KVStore('kv_default');
-
-// Read a value
-const entry = await kv.get('visit-count');
-const count = entry ? Number(await entry.text()) : 0;
-
-// Write a value
-await kv.put('visit-count', String(count + 1));
-```
-
-**Notes:**
-- The KV store will always be named kv_default
-- The KV store is empty at provision time; populate it at runtime via the Fastly KV Store API (declarative key/value entries in `edgeFunctions.yaml` are not supported)
-- The KV store is shared between all your edge functions
-
-### Logging
-
-AEM Edge Functions is compatible with the [log forwarding feature](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/log-forwarding).
-
-You can define your logging configuration as follow (create a logForwarding.yaml file next to the edgeFunctions.yaml)
-
-```
-kind: "LogForwarding"
-version: "1"
-data:
-  splunk:
-    default:
-      enabled: true
-      host: "splunk-host.example.com"
-      token: "${{SPLUNK_TOKEN}}"
-      index: "AEMaaCS"
-```
-
-and use the logger in your code as follow:
-
-```
-import { Logger } from "fastly:logger";
-...
-const logger = new Logger("customerSplunk");
-logger.log(JSON.stringify({
-  method: event.request.method,
-  url: event.request.url
-}));
-```
-
-## Caching
-
-AEM Edge Functions sit between the CDN and the origin. There are **two distinct caches** in the request flow:
-
-```
-Browser → AEM CDN (CDN Cache) → AEM Edge Functions (Fetch Cache) → Origin
-```
-
-| Cache | What it caches | Influenced by | How to purge |
-|-------|---------------|---------------|--------------|
-| **CDN Cache** | The Edge Function's response to the browser | Response headers set by the Edge Function (`Cache-Control`, `Surrogate-Control`, `Surrogate-Key`) | [CDN Cache Purge API](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-cache-purge) |
-| **Edge Function Fetch Cache** | The origin's response to `fetch()` calls within the Edge Function, **and** any data stored via the Core Cache API | Origin response headers or [`CacheOverride`](https://js-compute-reference-docs.edgecompute.app/docs/fastly:cache-override/CacheOverride/) on fetch calls; surrogate keys assigned programmatically for Core Cache entries | `aio aem edge-functions purge-cache` CLI command or `purgeSurrogateKey()` |
-
-### CDN Cache (Outer)
-
-The CDN cache sits between the browser and the Edge Function. It caches the Edge Function's **response**. You control its behavior by setting standard HTTP cache headers on your Edge Function responses:
-
-```javascript
-return new Response(body, {
-  headers: {
-    'Surrogate-Key': 'page-home product-123',
-    'Cache-Control': 'public, max-age=3600'
-  }
-});
-```
-
-Multiple surrogate keys are separated by spaces. These surrogate keys can be used to purge the CDN cache using the [CDN Cache Purge API](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-cache-purge).
-
-#### Varying the CDN Cache Key
-
-By default the CDN caches a response under its URL, so the same URL returns the same cached content for every visitor. When a response depends on a request attribute — for example the `/weather` example varies by the caller's IP-based location — cache it *per that attribute* rather than disabling caching with `skipCache: true`. Fold the attribute into the URL with a CDN [request transformation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-configuring-traffic#request-transformations) so it becomes part of the cache key:
-
-```yaml
-requestTransformations:
-  rules:
-    - name: add-client-ip-to-weather
-      when: { reqProperty: path, equals: "/weather" }
-      actions:
-        - type: set
-          queryParam: ip
-          value: { reqProperty: clientIp }
-```
-
-The function reads the value from the query parameter (`new URL(req.url).searchParams.get("ip")`) instead of the `X-Forwarded-For` header. Each distinct client IP then gets its own cache entry, so repeat requests are served from the CDN cache for the response's `Cache-Control: max-age` — five minutes for the weather example — without re-invoking the Edge Function.
-
-### Edge Function Fetch Cache (Inner)
-
-The Edge Function fetch cache sits between the Edge Function and the origin. It caches the **origin's response** to `fetch()` calls made within your Edge Function code. It also holds any data your code stores via the **Core Cache API** or **Simple Cache API**.
-
-This cache is influenced by:
-- The origin's response headers (e.g., `Cache-Control` returned by the origin)
-- The [`CacheOverride`](https://js-compute-reference-docs.edgecompute.app/docs/fastly:cache-override/CacheOverride/) option on your fetch calls
-- Surrogate keys assigned programmatically when writing to the Core Cache API
-
-> **Important:** The `Surrogate-Key` header you set on your Edge Function's *outgoing response* to the browser controls the **outer CDN cache**, not this inner cache. Surrogate keys for the inner cache come from the origin's `Surrogate-Key` response header or from keys you assign when writing to the Core Cache API.
-
-To cache origin responses for a specific duration:
-
-```javascript
-import { CacheOverride } from "fastly:cache-override";
-
-const response = await fetch(request, {
-  backend: "my-origin",
-  cacheOverride: new CacheOverride({ ttl: 300 })
-});
-```
-
-To bypass the fetch cache entirely and always fetch from the origin, use `pass` mode:
-
-```javascript
-import { CacheOverride } from "fastly:cache-override";
-
-const response = await fetch(request, {
-  backend: "my-origin",
-  cacheOverride: new CacheOverride({ mode: "pass" })
-});
-```
-
-### Purging the Edge Function Fetch Cache
-
-The `purge-cache` CLI command purges the **Edge Function fetch cache** (the origin responses cached within the Edge Function). It does **not** purge the outer CDN cache.
-
-```
-# Purge by surrogate key
-aio aem edge-functions purge-cache <function-name> --surrogateKey my-page-key
-
-# Purge multiple surrogate keys
-aio aem edge-functions purge-cache <function-name> -k key1 -k key2
-
-# Purge all cached content (use with caution)
-aio aem edge-functions purge-cache <function-name> --all
-
-# Soft purge (stale content served while revalidating)
-aio aem edge-functions purge-cache <function-name> --surrogateKey my-key --soft
-```
-
-You can also purge surrogate keys programmatically from within your Edge Function code using the [`purgeSurrogateKey`](https://js-compute-reference-docs.edgecompute.app/docs/fastly:compute/purgeSurrogateKey) function:
-
-```javascript
-import { purgeSurrogateKey } from "fastly:compute";
-
-// Hard purge (immediate removal)
-purgeSurrogateKey("my-page-key");
-
-// Soft purge (retain stale entries for revalidation)
-purgeSurrogateKey("my-page-key", true);
-```
-
-### Purging the CDN Cache
-
-To purge the outer CDN cache (the Edge Function's response cached at the CDN layer), use the [CDN Cache Purge API](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-cache-purge). This is the same purge mechanism used for all AEM Cloud Service content cached at the CDN.
-
-In the AEM as a Cloud Service architecture, Edge Functions receive traffic from the CDN via [origin selectors](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-configuring-traffic#origin-selectors). The complete request flow is:
-
-```
-Client → AEM CDN (VCL) → Origin Selector → Edge Function → Origin
-```
-
-The CDN caches the final response returned by the Edge Function. A CDN purge clears **only** that outer cached response — it has no effect on the Edge Function's internal caches. Similarly, the `purge-cache` command clears **only** the Edge Function's internal caches — it does not clear the CDN cache.
-
-> **Coordinating purges across both layers:** Because the Edge Function sits behind the CDN as a backend origin (reachable through origin selectors), these two caches operate independently:
->
-> 1. Purging only the CDN cache causes the next request to invoke the Edge Function via the origin selector. If the Edge Function's fetch cache still holds stale data, it will return old content — which the CDN then caches again.
-> 2. Purging only the Edge Function cache clears internal state, but the CDN continues serving its previously cached copy until it expires or is separately purged.
->
-> **Best practice:** When underlying data changes, purge **both** caches — use the CDN Cache Purge API for the outer layer and `purge-cache` (or `purgeSurrogateKey()`) for the inner Edge Function layer. Using consistent surrogate keys across both layers simplifies coordinated invalidation.
-
-## References
-
-https://www.fastly.com/documentation/guides/compute/
+Prettier supplies one formatting convention; no application framework or
+transpilation is introduced. GitHub Actions runs formatting checks and the Node
+tests. The Fastly build remains a separate local validation step requiring the
+Adobe CLI. Tests mock Fastly modules and upstream requests; they require no
+Adobe login and are not proof that a target environment is correctly provisioned.
+
+## Troubleshooting
+
+- **Wrong domain or org:** rerun `aio aem edge-functions setup` and save locally.
+  Confirm with `aio aem edge-functions info --debug`. A changed CLI org does not
+  grant access or switch your signed-in Adobe identity.
+- **TLS hostname mismatch:** use the correctly registered site domain with valid
+  TLS. Do not disable certificate validation.
+- **403 / required product profile missing:** check organization, login and roles.
+  An IMS token represents your interactive user; OAuth Server-to-Server uses the
+  Developer Console technical account. Refresh login after permissions change.
+- **Unrendered block:** check authored markup, exact published SKU/paths, query
+  model and logs. Inspect the SSR count headers.
+- **Stale content:** the outer CDN response cache and inner fetch cache are
+  separate; purging one does not purge the other.
+
+Request logs contain method, path and status. They intentionally omit query
+values and headers, and require no config store or logging endpoint.
+See the [platform reference](docs/edge-functions-reference.md) for optional stores,
+log forwarding, cache control and purge commands.

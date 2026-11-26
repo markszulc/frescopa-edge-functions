@@ -14,10 +14,10 @@ governing permissions and limitations under the License.
 
 import * as response from './lib/response.js';
 import { log } from './lib/log.js';
-import { weatherHandler } from "./weather.js";
-import { faqHandler, faqDataHandler, faqByPathDataHandler } from "./faq.js";
+import { weatherHandler } from './services/weather.js';
+import { handleBlockRequest } from './block-handlers.js';
 
-addEventListener("fetch", (event) => event.respondWith(handleRequest(event)));
+addEventListener('fetch', (event) => event.respondWith(handleRequest(event)));
 
 async function handleRequest(event) {
   const req = event.request;
@@ -27,16 +27,12 @@ async function handleRequest(event) {
 
   try {
     // Route matching
-    if (url.pathname === "/hello-world" && req.method === "GET") {
-      finalResponse = new Response("Hello World from the VERY edge!", { status: 200 });
-    } else if (url.pathname === "/weather" && req.method === "GET") {
+    if (url.pathname === '/hello-world' && req.method === 'GET') {
+      finalResponse = new Response('Hello World from the VERY edge!', { status: 200 });
+    } else if (url.pathname === '/weather' && req.method === 'GET') {
       finalResponse = await weatherHandler(req, event.client);
-    } else if (url.pathname === "/faq-data" && req.method === "GET") {
-      finalResponse = await faqDataHandler(req); // JSON for client-side rendering in preview/authoring
-    } else if (url.pathname === "/faq-data-by-path" && req.method === "GET") {
-      finalResponse = await faqByPathDataHandler(req);
     } else {
-      finalResponse = await faqHandler(req); // scans every page for SKU FAQ and content-fragment blocks
+      finalResponse = await handleBlockRequest(req);
     }
   } catch (err) {
     console.log(err);

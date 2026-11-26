@@ -4,7 +4,7 @@ data:
   requestTransformations:
     rules:
       - name: add-client-ip-to-weather
-        when: { reqProperty: path, equals: "/weather" }
+        when: { reqProperty: path, equals: '/weather' }
         actions:
           - type: set
             queryParam: ip
@@ -12,12 +12,12 @@ data:
   originSelectors:
     rules:
       - name: route-weather-to-edge-function
-        when: { reqProperty: path, equals: "/weather" }
+        when: { reqProperty: path, equals: '/weather' }
         action:
           type: selectAemOrigin
           originName: edgefunction-my-edge-function
       - name: route-hello-world-to-edge-function
-        when: { reqProperty: path, equals: "/hello-world" }
+        when: { reqProperty: path, equals: '/hello-world' }
         action:
           type: selectAemOrigin
           originName: edgefunction-my-edge-function
