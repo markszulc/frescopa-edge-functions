@@ -86,7 +86,9 @@ per row, without a label/header row:
 The edge emits standard question/answer block rows with escaped plaintext,
 `data-faq-ssr="true"`, and FAQPage JSON-LD in the page head.
 `x-faq-path-ssr` counts successfully rendered path blocks. Invalid paths or
-upstream failures are logged and leave the authored block intact.
+upstream failures are logged and leave the authored block intact. Empty results
+also log a warning and preserve the paths for browser fallback. Paths must match
+the published fragment paths exactly; `/faqs/` and `/fa-qs/` are different folders.
 
 For browser hydration/fallback in preview or local development, use
 `GET /faq-data-by-path` with repeated, URL-encoded `path` parameters:

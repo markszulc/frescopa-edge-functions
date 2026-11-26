@@ -161,6 +161,10 @@ export function createFaqHandlers(options = {}) {
   async function renderPathBlock(block) {
     try {
       const items = await fetchFaqsByPaths(extractPaths(block.inner));
+      if (!items.length) {
+        console.warn("No published FAQs matched the authored paths; preserving authored block");
+        return null;
+      }
       return renderFaqs(items, `${block.opening.slice(0, -1)} data-faq-ssr="true">`);
     } catch (error) {
       console.error("FAQ path rendering failed; preserving authored block", error);

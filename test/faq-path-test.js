@@ -224,6 +224,16 @@ describe('FAQ rendering by path', function () {
         assert.equal(errors.length, failures.length);
     });
 
+    it('preserves authored paths when no published fragments match', async function () {
+        mockFetch(page, { data: { faqList: { items: [] } } });
+        const res = await faqHandler(new Request('https://example.com/page'));
+        assert.equal(await res.text(), page);
+        assert.equal(res.headers.get('x-faq-path-ssr'), '0');
+        assert.equal(res.headers.get('etag'), '"origin"');
+        assert.equal(errors.length, 1);
+        assert.match(errors[0][0], /No published FAQs matched/);
+    });
+
     it('returns an empty successful result when no requested fragments exist', async function () {
         mockFetch(page, { data: { faqList: { items: [] } } });
         const res = await faqByPathDataHandler(new Request(`https://example.com/faq-data-by-path?${new URLSearchParams({ path: first })}`));
