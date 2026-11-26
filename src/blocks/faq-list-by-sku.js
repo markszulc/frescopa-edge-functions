@@ -5,7 +5,7 @@ import { createJsonCorsHeaders } from '../lib/json-cors.js';
 const defaultConfig = {
   className: 'faq-list-by-sku',
   ssrHeader: 'x-faq-ssr',
-  dataPath: '/faq-data',
+  dataPath: '/blocks/faq-list-by-sku',
   queryPath: '/graphql/execute.json/frescopa/FAQbySKU',
   listKey: 'faqList',
   cacheTtl: 300,

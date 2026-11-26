@@ -24,6 +24,8 @@ Use vanilla ES modules with explicit `.js` import extensions.
 - Keep shared hosts and browser origins in `src/site-config.js`; block-specific
   configuration belongs inside its block.
 - Register blocks in `src/block-handlers.js`; standalone routes belong in `src/index.js`.
+- Name block JSON routes `/blocks/<eds-block-name>` and keep the matching EDS
+  browser caller consistent when changing a route.
 - Match tests to owning module names: `test/<module-name>-test.js`.
   Keep routing and page-proxy integration tests separate from block tests.
 

@@ -72,7 +72,7 @@ describe('content-fragment', function () {
       );
     };
     const res = await renderer.dataHandler(
-      new Request('https://example.com/faq-data-by-path?path=/content/dam/other/faq'),
+      new Request('https://example.com/blocks/content-fragment?path=/content/dam/other/faq'),
     );
     assert.deepEqual(await res.json(), {
       paths: ['/content/dam/other/faq'],
@@ -82,7 +82,7 @@ describe('content-fragment', function () {
     assert.equal(calls[0].url, 'https://publish-other.adobeaemcloud.com/graphql/other');
     assert.match(JSON.parse(calls[0].options.body).query, /query Other/);
     const invalid = await renderer.dataHandler(
-      new Request(`https://example.com/faq-data-by-path?path=${first}`),
+      new Request(`https://example.com/blocks/content-fragment?path=${first}`),
     );
     assert.equal(invalid.status, 400);
     assert.equal(calls.length, 1);
@@ -190,7 +190,7 @@ describe('content-fragment', function () {
       ['path', first],
     ]);
     const res = await faqByPathDataHandler(
-      new Request(`https://example.com/faq-data-by-path?${params}`, {
+      new Request(`https://example.com/blocks/content-fragment?${params}`, {
         headers: { origin: 'http://localhost:3000' },
       }),
     );
@@ -211,7 +211,7 @@ describe('content-fragment', function () {
     ]) {
       const params = new URLSearchParams({ path });
       const res = await faqByPathDataHandler(
-        new Request(`https://example.com/faq-data-by-path?${params}`, {
+        new Request(`https://example.com/blocks/content-fragment?${params}`, {
           headers: { origin: 'https://untrusted.example' },
         }),
       );
@@ -225,7 +225,7 @@ describe('content-fragment', function () {
 
   it('returns uncached 502 errors for HTTP, GraphQL, malformed JSON, and transport failures', async function () {
     const req = new Request(
-      `https://example.com/faq-data-by-path?${new URLSearchParams({ path: first })}`,
+      `https://example.com/blocks/content-fragment?${new URLSearchParams({ path: first })}`,
     );
     const failures = [
       () => mockFetch(page, {}, 503),
@@ -267,7 +267,9 @@ describe('content-fragment', function () {
   it('returns an empty successful result when no requested fragments exist', async function () {
     mockFetch(page, { data: { faqList: { items: [] } } });
     const res = await faqByPathDataHandler(
-      new Request(`https://example.com/faq-data-by-path?${new URLSearchParams({ path: first })}`),
+      new Request(
+        `https://example.com/blocks/content-fragment?${new URLSearchParams({ path: first })}`,
+      ),
     );
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { paths: [first], items: [] });

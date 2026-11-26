@@ -4,7 +4,7 @@ import { createJsonCorsHeaders } from '../lib/json-cors.js';
 const defaultConfig = {
   className: 'content-fragment',
   ssrHeader: 'x-faq-path-ssr',
-  dataPath: '/faq-data-by-path',
+  dataPath: '/blocks/content-fragment',
   queryPath: '/content/_cq_graphql/frescopa/endpoint.json',
   query: `query getFaqsByPaths($filter: FaqModelFilter) {
   faqList(filter: $filter) {

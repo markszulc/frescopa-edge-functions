@@ -39,8 +39,8 @@ The local edge server runs at `http://127.0.0.1:7676`:
 ```sh
 curl http://127.0.0.1:7676/hello-world
 curl 'http://127.0.0.1:7676/weather?ip=127.0.0.1'
-curl 'http://127.0.0.1:7676/faq-data?sku=CSM6001'
-curl 'http://127.0.0.1:7676/faq-data-by-path?path=/content/dam/frescopa/en/faqs/do-i-have-to-buy-frescopa-pods'
+curl 'http://127.0.0.1:7676/blocks/faq-list-by-sku?sku=CSM6001'
+curl 'http://127.0.0.1:7676/blocks/content-fragment?path=/content/dam/frescopa/en/faqs/do-i-have-to-buy-frescopa-pods'
 ```
 
 FAQ examples call the configured AEM Publish host and require published content.
@@ -104,13 +104,19 @@ docs/
 All listed endpoints use GET. Browser JSON endpoint paths are declared inside
 their block modules; standalone routes are declared in [index.js](src/index.js).
 
-| Route                        | Owner                     | Response                                                                        | Caching                                  |
-| ---------------------------- | ------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------- |
-| `/hello-world`               | Entry-point demonstration | Plain text                                                                      | No explicit TTL in this example          |
-| `/weather`                   | Weather service           | Plain text                                                                      | 300 seconds, CDN key varies by client IP |
-| `/faq-data?sku=...`          | `faq-list-by-sku`         | `{ sku, items }` JSON                                                           | 300 seconds                              |
-| `/faq-data-by-path?path=...` | `content-fragment`        | `{ paths, items }` JSON                                                         | 300 seconds                              |
-| Remaining paths              | Page handler              | EDS origin response, with matching blocks rendered on successful GET HTML pages | Origin response cache headers            |
+Block JSON routes follow `/blocks/<eds-block-name>`, directly matching the module
+in `src/blocks/` and its EDS browser block. The old FAQ-oriented endpoint names
+are no longer registered; there are no compatibility aliases. Deploy the updated
+edge function and EDS browser blocks together. The CDN's existing extensionless
+page routing already covers these paths, so no configuration pipeline change is needed.
+
+| Route                               | Owner                     | Response                                                                        | Caching                                  |
+| ----------------------------------- | ------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------- |
+| `/hello-world`                      | Entry-point demonstration | Plain text                                                                      | No explicit TTL in this example          |
+| `/weather`                          | Weather service           | Plain text                                                                      | 300 seconds, CDN key varies by client IP |
+| `/blocks/faq-list-by-sku?sku=...`   | `faq-list-by-sku`         | `{ sku, items }` JSON                                                           | 300 seconds                              |
+| `/blocks/content-fragment?path=...` | `content-fragment`        | `{ paths, items }` JSON                                                         | 300 seconds                              |
+| Remaining paths                     | Page handler              | EDS origin response, with matching blocks rendered on successful GET HTML pages | Origin response cache headers            |
 
 ```text
 Request -> index.js

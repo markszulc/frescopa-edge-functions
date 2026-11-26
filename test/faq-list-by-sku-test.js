@@ -50,7 +50,7 @@ describe('faq-list-by-sku', function () {
       return new Response(JSON.stringify({ data: { faqList: { items: [{ question: 'Q?' }] } } }));
     };
     const res = await renderer.dataHandler(
-      new Request('https://example.com/faq-data?sku=CSM6001', {
+      new Request('https://example.com/blocks/faq-list-by-sku?sku=CSM6001', {
         headers: { origin: 'http://localhost:3000' },
       }),
     );
@@ -139,7 +139,9 @@ describe('faq-list-by-sku', function () {
       calls.push(url);
       return new Response(JSON.stringify({ data: { helpList: { items: [] } } }));
     };
-    const data = await renderer.dataHandler(new Request('https://example.com/faq-data?sku=ABC1'));
+    const data = await renderer.dataHandler(
+      new Request('https://example.com/blocks/faq-list-by-sku?sku=ABC1'),
+    );
     assert.equal(data.headers.get('cache-control'), 'public, max-age=60');
   });
 
@@ -187,7 +189,9 @@ describe('faq-list-by-sku', function () {
     ];
     for (const fail of failures) {
       globalThis.fetch = async () => fail();
-      const res = await renderer.dataHandler(new Request('https://example.com/faq-data?sku=ABC1'));
+      const res = await renderer.dataHandler(
+        new Request('https://example.com/blocks/faq-list-by-sku?sku=ABC1'),
+      );
       assert.equal(res.status, 502);
       assert.equal(res.headers.get('cache-control'), 'no-store');
       assert.deepEqual(await res.json(), { error: 'FAQ content unavailable' });
@@ -201,11 +205,13 @@ describe('faq-list-by-sku', function () {
       calls.push(url);
       return new Response(JSON.stringify({ data: { faqList: { items: [] } } }));
     };
-    const empty = await renderer.dataHandler(new Request('https://example.com/faq-data?sku=ABC1'));
+    const empty = await renderer.dataHandler(
+      new Request('https://example.com/blocks/faq-list-by-sku?sku=ABC1'),
+    );
     assert.equal(empty.status, 200);
     assert.deepEqual(await empty.json(), { sku: 'ABC1', items: [] });
     const invalid = await renderer.dataHandler(
-      new Request('https://example.com/faq-data?sku=invalid!'),
+      new Request('https://example.com/blocks/faq-list-by-sku?sku=invalid!'),
     );
     assert.equal(invalid.status, 400);
     assert.equal(invalid.headers.get('cache-control'), 'no-store');

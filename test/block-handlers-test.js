@@ -37,7 +37,7 @@ describe('block-handlers', function () {
     };
     const sku = await handlers.handleRequest(new Request('https://example.com/sku-json?sku=ABC1'));
     const path = await handlers.handleRequest(
-      new Request('https://example.com/faq-data-by-path?path=/content/dam/faq'),
+      new Request('https://example.com/blocks/content-fragment?path=/content/dam/faq'),
     );
     assert.equal(sku.headers.get('cache-control'), 'public, max-age=60');
     assert.equal(path.headers.get('cache-control'), 'public, max-age=300');
